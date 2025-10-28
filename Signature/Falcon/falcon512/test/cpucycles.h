@@ -1,37 +1,15 @@
 #ifndef CPUCYCLES_H
 #define CPUCYCLES_H
-
 #include <stdint.h>
-
-
-// 2种方法获取CPU周期数
-// 1. rdpmc: 需要内核支持，且需要权限（echo 2 > /sys/devices/cpu/rdpmc）
-// 2. rdtsc: 不需要权限，但可能会被乱序执行影响精度
-#ifdef USE_RDPMC  /* Needs echo 2 > /sys/devices/cpu/rdpmc */
-
+#include <time.h>
+#if defined(__x86_64__) || defined(__i386__)
 static inline uint64_t cpucycles(void) {
-  const uint32_t ecx = (1U << 30) + 1;
-  uint64_t result;
-
-  __asm__ volatile ("rdpmc; shlq $32,%%rdx; orq %%rdx,%%rax"
-    : "=a" (result) : "c" (ecx) : "rdx");
-
-  return result;
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
-
 #else
-
-static inline uint64_t cpucycles(void) {
-  uint64_t result;
-
-  __asm__ volatile ("rdtsc; shlq $32,%%rdx; orq %%rdx,%%rax"
-    : "=a" (result) : : "%rdx");
-
-  return result;
-}
-
+#error "cpucycles.h only supports x86 architectures (x86_64/i386)"
 #endif
-
 uint64_t cpucycles_overhead(void);
-
 #endif

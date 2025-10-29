@@ -9,7 +9,7 @@ static inline uint64_t cpucycles(void) {
   return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
 #else
-#error "cpucycles.h only supports x86 architectures (x86_64/i386)"
+#error "only x86 can do!"
 #endif
 uint64_t cpucycles_overhead(void);
 #endif

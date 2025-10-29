@@ -71,7 +71,7 @@ seedexpander(AES_XOF_struct *ctx, unsigned char *x, unsigned long xlen)
     
     offset = 0;
     while ( xlen > 0 ) {
-        if ( xlen <= (16-ctx->buffer_pos) ) { // buffer has what we need
+        if (xlen <= (unsigned long)(16 - ctx->buffer_pos)) { // buffer has what we need
             memcpy(x+offset, ctx->buffer+ctx->buffer_pos, xlen);
             ctx->buffer_pos += xlen;
             

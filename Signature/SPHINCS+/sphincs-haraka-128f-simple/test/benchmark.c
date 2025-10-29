@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 199309L
-
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -267,11 +267,11 @@ int main() {
     printf("%-15s | %-15s | %-15s | %-15s | %-15s\n",
         "测试项", "平均值(ns)", "中位数(ns)", "最小值(ns)", "最大值(ns)");
     printf("-------------------------------------------------------------\n");
-    printf("%-15s | %-15.0f | %-15llu | %-15llu | %-15llu\n",
+    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
         "密钥对生成", kp_avg_ns, kp_med_ns, kp_min_ns, kp_max_ns);
-    printf("%-15s | %-15.0f | %-15llu | %-15llu | %-15llu\n",
+    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
         "签名", sign_avg_ns, sign_med_ns, sign_min_ns, sign_max_ns);
-    printf("%-15s | %-15.0f | %-15llu | %-15llu | %-15llu\n",
+    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
         "验证", verify_avg_ns, verify_med_ns, verify_min_ns, verify_max_ns);
     printf("=======================================================================\n");
 

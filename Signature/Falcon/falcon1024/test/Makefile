@@ -1,10 +1,14 @@
-CC = c99
-CFLAGS = -W -Wall -O2
-LD = c99
-LDFLAGS =
-LIBS =
+# ========== Falcon 测速 Makefile（修复 clock_gettime 问题） ==========
 
-OBJ = build/codec.o build/common.o build/fft.o build/fpr.o build/keygen.o build/nist.o build/rng.o build/shake.o build/sign.o build/vrfy.o build/katrng.o
+CC = gcc
+CFLAGS = -W -Wall -O2 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
+LD = gcc
+LDFLAGS =
+LIBS = -lrt
+
+OBJ = build/codec.o build/common.o build/fft.o build/fpr.o build/keygen.o \
+      build/nist.o build/rng.o build/shake.o build/sign.o build/vrfy.o \
+      build/katrng.o
 
 build:
 	-mkdir -p build
@@ -39,7 +43,7 @@ build/sign.o: ../sign.c ../api.h ../fpr.h ../inner.h | build
 build/vrfy.o: ../vrfy.c ../api.h ../fpr.h ../inner.h | build
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-build/katrng.o: ../../../../KAT/generator/katrng.c ../../../../KAT/generator/katrng.h | build
+build/katrng.o: ../../KAT/generator/katrng.c ../../KAT/generator/katrng.h | build
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 build/test_speed.o: test_speed.c ../api.h | build

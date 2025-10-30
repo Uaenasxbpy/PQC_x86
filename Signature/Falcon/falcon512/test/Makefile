@@ -41,8 +41,8 @@ build/vrfy.o: ../vrfy.c ../api.h ../fpr.h ../inner.h | build
 
 build/katrng.o: ../../KAT/generator/katrng.c ../../KAT/generator/katrng.h | build
 	$(CC) $(CFLAGS) -c -o $@ $<
-Arm/Signature/Falcon/KAT/generator/katrng.c
-Arm/Signature/Falcon/falcon512/test/Makefile
+	Arm/Signature/Falcon/KAT/generator/katrng.c
+	Arm/Signature/Falcon/falcon512/test/Makefile
 
 build/test_speed.o: test_speed.c ../api.h | build
 	$(CC) $(CFLAGS) -c -o $@ $<

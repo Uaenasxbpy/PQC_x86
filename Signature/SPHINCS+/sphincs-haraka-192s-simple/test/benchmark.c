@@ -19,9 +19,26 @@
 #define NTESTS 10
 #define TEST_ROUNDS 20
 
+#if defined(__i386__) || defined(__x86_64__)
+static inline uint64_t rdtsc(void) {
+    unsigned int lo, hi;
+    // RDTSC指令将64位计数器读入 EDX:EAX
+    __asm__ volatile ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+#else
+
+#warning "RDTSC (CPU cycle counter) is not supported on this architecture. Cycle counts will be 0."
+static inline uint64_t rdtsc(void) {
+    return 0;
+}
+#endif
+
+
 // 新增：获取当前CPU时间（纳秒）
 static uint64_t get_current_time_ns(void) {
     struct timespec ts;
+    // 使用 CLOCK_PROCESS_CPUTIME_ID 来获取进程花费的CPU时间
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
@@ -74,7 +91,7 @@ static void print_platform_info(double *cpu_freq_out) {
     double total_mem = get_total_memory();
     *cpu_freq_out = cpu_freq;
     printf("=============================================================\n");
-    printf("                      测试平台信息                            \n");
+    printf("                           测试平台信息                      \n");
     printf("=============================================================\n");
     printf("操作系统内核版本: %s %s\n", un.sysname, un.release);
     printf("编译器          : %s %s\n", get_compiler_name(), __VERSION__);
@@ -144,7 +161,6 @@ static void printfalignedcomma(unsigned long long n, int len) {
     printfcomma(n);
 }
 
-// 修改：适配时间（纳秒）统计，输出单位改为微秒
 static void display_result(double result, unsigned long long *l, size_t llen, unsigned long long mul) {
     unsigned long long med;
 
@@ -158,7 +174,6 @@ static void display_result(double result, unsigned long long *l, size_t llen, un
     printf(" ns\n");
 }
 
-// 修改：MEASURE宏使用get_current_time_ns获取时间
 #define MEASURE(TEXT, MUL, FNCALL)\
     printf(TEXT);\
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);\
@@ -170,6 +185,8 @@ static void display_result(double result, unsigned long long *l, size_t llen, un
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &stop);\
     result = (double)((stop.tv_sec - start.tv_sec) * 1000000000ULL + (stop.tv_nsec - start.tv_nsec));\
     display_result(result, t, NTESTS, MUL);
+// ... (以上部分保持不变) ...
+
 
 int main() {
     double cpu_freq;
@@ -194,9 +211,17 @@ int main() {
     unsigned long long smlen;
     unsigned long long mlen;
     unsigned long long t[NTESTS+1];
-    uint64_t keypair_cycles[TEST_ROUNDS] = {0};  // 实际存储纳秒时间
-    uint64_t sign_cycles[TEST_ROUNDS] = {0};     // 实际存储纳秒时间
-    uint64_t verify_cycles[TEST_ROUNDS] = {0};   // 实际存储纳秒时间
+
+    // 修改：重命名数组以区分纳秒和周期
+    uint64_t keypair_ns[TEST_ROUNDS] = {0};   // 存储纳秒时间
+    uint64_t sign_ns[TEST_ROUNDS] = {0};      // 存储纳秒时间
+    uint64_t verify_ns[TEST_ROUNDS] = {0};    // 存储纳秒时间
+
+    // 新增：用于存储CPU周期的数组
+    uint64_t keypair_cycles[TEST_ROUNDS] = {0};
+    uint64_t sign_cycles[TEST_ROUNDS] = {0};
+    uint64_t verify_cycles[TEST_ROUNDS] = {0};
+
     struct timespec start, stop;
     double result;
     int i;
@@ -210,6 +235,7 @@ int main() {
 
     printf("Running %d iterations.\n", NTESTS);
 
+    // (MEASURE 宏部分保持不变，它提供了快速的初步测试)
     MEASURE("Generating keypair.. ", 1, crypto_sign_keypair(pk, sk));
     MEASURE("  - WOTS pk gen..    ", (1 << SPX_TREE_HEIGHT), wots_gen_pk(wots_pk, sk, pk, (uint32_t *) addr));
     MEASURE("Signing..            ", 1, crypto_sign(sm, &smlen, m, SPX_MLEN, sk));
@@ -218,36 +244,74 @@ int main() {
     MEASURE("  - WOTS pk gen..    ", SPX_D * (1 << SPX_TREE_HEIGHT), wots_gen_pk(wots_pk, sk, pk, (uint32_t *) addr));
     MEASURE("Verifying..          ", 1, crypto_sign_open(mout, &mlen, sm, smlen, pk));
 
-    printf("\n正在执行 %d 次详细统计测试...\n", TEST_ROUNDS);
+    printf("\n正在执行 %d 次详细统计测试 (纳秒 + 周期)...\n", TEST_ROUNDS);
     for (int j = 0; j < TEST_ROUNDS; j++) {
         uint64_t start_ns, end_ns;
-        start_ns = get_current_time_ns();
-        crypto_sign_keypair(pk, sk);
-        end_ns = get_current_time_ns();
-        keypair_cycles[j] = end_ns - start_ns;
+        // 新增：周期变量
+        uint64_t start_cy, end_cy;
 
+        // --- 密钥对生成 ---
+        start_ns = get_current_time_ns(); // 1. 开始计时
+        start_cy = rdtsc();               // 2. 开始计周期
+
+        crypto_sign_keypair(pk, sk);      // 3. 执行函数
+
+        end_cy = rdtsc();                 // 4. 结束计周期
+        end_ns = get_current_time_ns();   // 5. 结束计时
+
+        keypair_ns[j] = end_ns - start_ns;
+        keypair_cycles[j] = end_cy - start_cy; // 存储周期
+
+        // --- 签名 ---
         start_ns = get_current_time_ns();
+        start_cy = rdtsc();
+
         crypto_sign(sm, &smlen, m, SPX_MLEN, sk);
-        end_ns = get_current_time_ns();
-        sign_cycles[j] = end_ns - start_ns;
 
-        start_ns = get_current_time_ns();
-        crypto_sign_open(mout, &mlen, sm, smlen, pk);
+        end_cy = rdtsc();
         end_ns = get_current_time_ns();
-        verify_cycles[j] = end_ns - start_ns;
+
+        sign_ns[j] = end_ns - start_ns;
+        sign_cycles[j] = end_cy - start_cy; // 存储周期
+
+        // --- 验证 ---
+        start_ns = get_current_time_ns();
+        start_cy = rdtsc();
+
+        crypto_sign_open(mout, &mlen, sm, smlen, pk);
+
+        end_cy = rdtsc();
+        end_ns = get_current_time_ns();
+
+        verify_ns[j] = end_ns - start_ns;
+        verify_cycles[j] = end_cy - start_cy; // 存储周期
     }
 
+    // (时间统计变量)
     double kp_avg_ns, sign_avg_ns, verify_avg_ns;
     uint64_t kp_med_ns, sign_med_ns, verify_med_ns;
     uint64_t kp_min_ns, sign_min_ns, verify_min_ns;
     uint64_t kp_max_ns, sign_max_ns, verify_max_ns;
 
-    // 统计纳秒级时间
-    calc_stats(keypair_cycles, TEST_ROUNDS, &kp_avg_ns, &kp_med_ns, &kp_min_ns, &kp_max_ns);
-    calc_stats(sign_cycles, TEST_ROUNDS, &sign_avg_ns, &sign_med_ns, &sign_min_ns, &sign_max_ns);
-    calc_stats(verify_cycles, TEST_ROUNDS, &verify_avg_ns, &verify_med_ns, &verify_min_ns, &verify_max_ns);
+    // 新增：周期的统计变量
+    double kp_avg_cy, sign_avg_cy, verify_avg_cy;
+    uint64_t kp_med_cy, sign_med_cy, verify_med_cy;
+    uint64_t kp_min_cy, sign_min_cy, verify_min_cy;
+    uint64_t kp_max_cy, sign_max_cy, verify_max_cy;
 
-    // 纳秒→毫秒换算
+
+    // 统计纳秒级时间 (修改：使用 ..._ns 数组)
+    calc_stats(keypair_ns, TEST_ROUNDS, &kp_avg_ns, &kp_med_ns, &kp_min_ns, &kp_max_ns);
+    calc_stats(sign_ns, TEST_ROUNDS, &sign_avg_ns, &sign_med_ns, &sign_min_ns, &sign_max_ns);
+    calc_stats(verify_ns, TEST_ROUNDS, &verify_avg_ns, &verify_med_ns, &verify_min_ns, &verify_max_ns);
+
+    // 新增：统计CPU周期
+    calc_stats(keypair_cycles, TEST_ROUNDS, &kp_avg_cy, &kp_med_cy, &kp_min_cy, &kp_max_cy);
+    calc_stats(sign_cycles, TEST_ROUNDS, &sign_avg_cy, &sign_med_cy, &sign_min_cy, &sign_max_cy);
+    calc_stats(verify_cycles, TEST_ROUNDS, &verify_avg_cy, &verify_med_cy, &verify_min_cy, &verify_max_cy);
+
+
+    // 纳秒→毫秒换算 (保持不变)
     double kp_avg_ms = kp_avg_ns / 1e6;
     double kp_med_ms = kp_med_ns / 1e6;
     double kp_min_ms = kp_min_ns / 1e6;
@@ -261,33 +325,38 @@ int main() {
     double verify_min_ms = verify_min_ns / 1e6;
     double verify_max_ms = verify_max_ns / 1e6;
 
-    printf("=======================================================================\n");
-    printf("              sphincs-haraka-192s 性能测试结果（时间：纳秒）    \n");
-    printf("=======================================================================\n");
-    printf("%-15s | %-15s | %-15s | %-15s | %-15s\n",
-        "测试项", "平均值(ns)", "中位数(ns)", "最小值(ns)", "最大值(ns)");
-    printf("-------------------------------------------------------------\n");
-    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
-        "密钥对生成", kp_avg_ns, kp_med_ns, kp_min_ns, kp_max_ns);
-    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
-        "签名", sign_avg_ns, sign_med_ns, sign_min_ns, sign_max_ns);
-    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
-        "验证", verify_avg_ns, verify_med_ns, verify_min_ns, verify_max_ns);
-    printf("=======================================================================\n");
 
+    // (毫秒时间输出表格，保持不变)
     printf("=======================================================================\n");
-    printf("              sphincs-haraka-192s 性能测试结果（时间：毫秒）      \n");
+    printf("                sphincs-haraka-192s 性能测试结果（时间：毫秒）               \n");
     printf("=======================================================================\n");
     printf("%-15s | %-12s | %-12s | %-12s | %-12s\n",
-        "测试项", "平均值(ms)", "中位数(ms)", "最小值(ms)", "最大值(ms)");
+           "测试项", "平均值(ms)", "中位数(ms)", "最小值(ms)", "最大值(ms)");
     printf("-----------------------------------------------------------------------\n");
     printf("%-15s | %-12.6f | %-12.6f | %-12.6f | %-12.6f\n",
-        "密钥对生成", kp_avg_ms, kp_med_ms, kp_min_ms, kp_max_ms);
+           "密钥", kp_avg_ms, kp_med_ms, kp_min_ms, kp_max_ms);
     printf("%-15s | %-12.6f | %-12.6f | %-12.6f | %-12.6f\n",
-        "签名", sign_avg_ms, sign_med_ms, sign_min_ms, sign_max_ms);
+           "签名", sign_avg_ms, sign_med_ms, sign_min_ms, sign_max_ms);
     printf("%-15s | %-12.6f | %-12.6f | %-12.6f | %-12.6f\n",
-        "验证", verify_avg_ms, verify_med_ms, verify_min_ms, verify_max_ms);
+           "验证", verify_avg_ms, verify_med_ms, verify_min_ms, verify_max_ms);
     printf("=======================================================================\n");
+
+    // 新增：CPU 周期数统计表
+    printf("=======================================================================\n");
+    printf("                sphincs-haraka-192s 性能测试结果（CPU 周期数）             \n");
+    printf("=======================================================================\n");
+    printf("%-15s | %-15s | %-15s | %-15s | %-15s\n",
+           "测试项", "平均值(cy)", "中位数(cy)", "最小值(cy)", "最大值(cy)");
+    printf("-----------------------------------------------------------------------\n");
+    // 注意：周期数是非常大的数字，我们使用 PRIu64 来打印
+    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
+           "密钥", kp_avg_cy, kp_med_cy, kp_min_cy, kp_max_cy);
+    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
+           "签名", sign_avg_cy, sign_med_cy, sign_min_cy, sign_max_cy);
+    printf("%-15s | %-15.0f | %-15" PRIu64 " | %-15" PRIu64 " | %-15" PRIu64 "\n",
+           "验证", verify_avg_cy, verify_med_cy, verify_min_cy, verify_max_cy);
+    printf("=======================================================================\n");
+
 
     printf("Signature size: %d (%.2f KiB)\n", SPX_BYTES, SPX_BYTES / 1024.0);
     printf("Public key size: %d (%.2f KiB)\n", SPX_PK_BYTES, SPX_PK_BYTES / 1024.0);
